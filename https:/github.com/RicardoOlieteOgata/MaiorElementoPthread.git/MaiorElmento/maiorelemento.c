@@ -6,12 +6,13 @@
 #include <errno.h>
 #include <ctype.h>
 #include <time.h>
+#include <sys/time.h>
 
 #define handle_error(msg) \
                do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
 int *vetor;
-int vetorSize;
+int vetorSize = 4000000;
 int *maiorVetor;
 int qtdThreads;
 
@@ -41,26 +42,26 @@ thread_busca_maior(void *arg) {
 	maiorVetor[tinfo->thread_num] = maiorParcial;
 }
 
-int main(int argc, char *argv[]) {
+int maiorElemento(int *vetor, int tam) {
+	int maior, i;
+	maior = vetor[0];
+	for (i = 1; i < tam; i++)
+		if (vetor[i] > maior)
+			maior = vetor[i];
+	return maior;
+}
+
+double parte_serial(int threadNum) {
 	struct thread_info *tinfo;
-	int i, tam, maior;
-	srand((unsigned) time(NULL));
-
-	qtdThreads = atoi(argv[1]);
-	vetorSize = atoi(argv[2]);
-
-	if (qtdThreads < 1)
-		handle_error("threads menor que 1");
-	if (vetorSize < 1 || vetorSize > 500)
-		handle_error("tamanho do vetor invalido");
-
+	double start_t, end_t;
+	struct timeval tv;
+	int tam, i, maior;
+	gettimeofday(&tv, NULL);
+	start_t = (double) tv.tv_sec + (double) tv.tv_usec / 1000000.0;
+	qtdThreads = threadNum;
 	tam = vetorSize / qtdThreads;
 
-	vetor = (int *) malloc(vetorSize * sizeof(int));
 	maiorVetor = (int *) malloc(qtdThreads * sizeof(int));
-
-	for (i = 0; i < vetorSize; i++)
-		vetor[i] = rand() % vetorSize + 1;
 
 	tinfo = calloc(qtdThreads, sizeof(struct thread_info));
 
@@ -75,14 +76,104 @@ int main(int argc, char *argv[]) {
 		pthread_join(tinfo[i].thread_id, NULL);
 	}
 
-	maior = maiorVetor[0];
-	for (i = 1; i < qtdThreads; i++)
-		if (maiorVetor[i] > maior)
-			maior = maiorVetor[i];
-	printf("Maior = %d \n", maior);
+	maior = maiorElemento(maiorVetor, qtdThreads);
 
 	free(tinfo);
+	free(maiorVetor);
+
+	gettimeofday(&tv, NULL);
+	end_t = (double) tv.tv_sec + (double) tv.tv_usec / 1000000.0;
+	return end_t - start_t;
+
+}
+
+void quickSort(int *original, int *randomica, int inicio, int fim) {
+	int meio;
+	if (inicio < fim) {
+		meio = separa(original, randomica, inicio, fim);
+		quickSort(original, randomica, inicio, meio);
+		quickSort(original, randomica, meio + 1, fim);
+	}
+}
+
+int separa(int *original, int *randomica, int inicio, int fim) {
+	int pivo, topo, pivoNumeros, i;
+	pivo = randomica[inicio];
+	pivoNumeros = original[inicio];
+	topo = inicio;
+	for (i = inicio + 1; i <= fim; i++)
+		if (randomica[i] < pivo) {
+			randomica[topo] = randomica[i];
+			original[topo] = original[i];
+			topo++;
+			randomica[i] = randomica[topo];
+			original[i] = original[topo];
+		}
+	randomica[topo] = pivo;
+	original[topo] = pivoNumeros;
+	return topo;
+}
+
+int main(int argc, char *argv[]) {
+	int i, maior, teste = 0;
+	int *randomica;
+	struct timeval tv;
+	double start_t, end_t, tempo_gasto[6];
+
+	srand((unsigned) time(NULL));
+
+	vetor = (int *) malloc(vetorSize * sizeof(int));
+	randomica = (int *) malloc(vetorSize * sizeof(int));
+
+	for (i = 0; i < vetorSize; i++) {
+		randomica[i] = rand();
+		vetor[i] = i;
+	}
+
+	quickSort(vetor, randomica, 0, vetorSize - 1);
+
+	//serial
+
+	gettimeofday(&tv, NULL);
+	start_t = (double) tv.tv_sec + (double) tv.tv_usec / 1000000.0;
+
+	maior = maiorElemento(vetor, vetorSize);
+
+	gettimeofday(&tv, NULL);
+	end_t = (double) tv.tv_sec + (double) tv.tv_usec / 1000000.0;
+	tempo_gasto[teste++] = end_t - start_t;
+
+	//2 threads
+	tempo_gasto[teste++] = parte_serial(2);
+
+	//4 threads
+	tempo_gasto[teste++] = parte_serial(4);
+
+	//8 threads
+	tempo_gasto[teste++] = parte_serial(8);
+
+	//16 threads
+	tempo_gasto[teste++] = parte_serial(16);
+
+	//24 threads
+	tempo_gasto[teste++] = parte_serial(24);
+
+	teste = 0;
+	printf("serial      = %f x mais rapido que o serial\n",
+			tempo_gasto[0] / tempo_gasto[teste]);
+	printf("02 threads  = %f x mais rapido que o serial\n",
+			tempo_gasto[0] / tempo_gasto[++teste]);
+	printf("04 threads  = %f x mais rapido que o serial\n",
+			tempo_gasto[0] / tempo_gasto[++teste]);
+	printf("08 threads  = %f x mais rapido que o serial\n",
+			tempo_gasto[0] / tempo_gasto[++teste]);
+	printf("16 threads  = %f x mais rapido que o serial\n",
+			tempo_gasto[0] / tempo_gasto[++teste]);
+	printf("24 threads  = %f x mais rapido que o serial\n",
+			tempo_gasto[0] / tempo_gasto[++teste]);
+
 	free(vetor);
+	free(randomica);
 
 	exit(EXIT_SUCCESS);
 }
